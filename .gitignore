@@ -1,0 +1,25 @@
+# Secrets -- never commit these
+.env
+.streamlit/secrets.toml
+
+# Your personal data
+profile.json
+resume.pdf
+resume.docx
+resume.txt
+recipients.csv
+career_urls.txt
+
+# Generated output
+resume_suggestions.md
+sent_log.csv
+screenshots/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store

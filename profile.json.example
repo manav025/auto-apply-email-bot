@@ -1,0 +1,14 @@
+{
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "full_name": "Jane Doe",
+  "email": "jane.doe@example.com",
+  "phone": "+1 555 123 4567",
+  "linkedin_url": "https://linkedin.com/in/janedoe",
+  "portfolio_url": "https://janedoe.dev",
+  "location": "Austin, TX",
+
+  "_comment_sensitive_fields": "Work authorization, sponsorship, salary, and EEO/demographic questions are NEVER auto-filled by the bot -- it always leaves those for you to answer yourself on each application, since getting them wrong can actually matter.",
+
+  "cover_letter_notes": "Optional: extra talking points you want woven into AI-drafted 'why this role/company' answers, e.g. 'particularly drawn to their open-source work' or 'relocating to the area in August'."
+}
