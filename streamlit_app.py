@@ -801,14 +801,14 @@ else:
             st.caption("Related roles -- click to search that instead:")
             rcols = st.columns(min(len(rs["related_roles"]), 6) or 1)
             for i, r in enumerate(rs["related_roles"]):
-                if rcols[i % len(rcols)].button(r, key=f"relrole_{i}", use_container_width=True):
+                if rcols[i % len(rcols)].button(r, key=f"relrole_{i}", width='stretch'):
                     st.session_state.job_search_kw = r
                     st.rerun()
         if rs.get("skills"):
             st.caption("Suggested skills -- click to add to your skill list:")
             scols = st.columns(min(len(rs["skills"]), 6) or 1)
             for i, s in enumerate(rs["skills"]):
-                if scols[i % len(scols)].button(f"+ {s}", key=f"addskill_{i}", use_container_width=True):
+                if scols[i % len(scols)].button(f"+ {s}", key=f"addskill_{i}", width='stretch'):
                     if s not in st.session_state.my_skills:
                         st.session_state.my_skills.append(s)
                     st.rerun()
@@ -903,16 +903,16 @@ else:
                     unsafe_allow_html=True,
                 )
                 bcol1, bcol2 = st.columns(2)
-                bcol1.link_button("Apply Now →", url, use_container_width=True)
+                bcol1.link_button("Apply Now →", url, width='stretch')
                 is_saved = job_id in st.session_state.saved_jobs
-                if bcol2.button("★ Saved" if is_saved else "☆ Save", key=f"save_{job_id}_{idx}", use_container_width=True):
+                if bcol2.button("★ Saved" if is_saved else "☆ Save", key=f"save_{job_id}_{idx}", width='stretch'):
                     if is_saved:
                         st.session_state.saved_jobs.discard(job_id)
                     else:
                         st.session_state.saved_jobs.add(job_id)
                     st.rerun()
                 if not manual_only:
-                    if st.button("+ Add to auto-apply list", key=f"add_{job_id}_{idx}", use_container_width=True):
+                    if st.button("+ Add to auto-apply list", key=f"add_{job_id}_{idx}", width='stretch'):
                         st.session_state.setdefault("career_urls", [])
                         if url not in st.session_state.career_urls:
                             st.session_state.career_urls.append(url)
@@ -966,7 +966,7 @@ if "recipients_df" not in st.session_state:
 recipients_df = st.data_editor(
     st.session_state.recipients_df,
     num_rows="dynamic",
-    use_container_width=True,
+    width='stretch',
     key="recipients_editor",
 )
 st.session_state.recipients_df = recipients_df
