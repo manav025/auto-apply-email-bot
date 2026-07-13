@@ -18,7 +18,7 @@ free Groq API key -- nothing here costs money at normal job-search volume.
 
 ```bash
 pip install -r requirements.txt
-playwright install chromium   # only needed for apply_bot.py
+pip install -r requirements-apply-bot.txt && playwright install chromium   # only needed for apply_bot.py
 ```
 
 (Python 3.10+ recommended.)
@@ -156,6 +156,14 @@ get a free pair at https://developer.adzuna.com/.
 Note: Community Cloud apps get 1 GB RAM and sleep when idle (a visit wakes
 them back up in a few seconds) -- plenty for this tool, since it's just API
 calls and sending mail, no heavy computation.
+
+**If the app crashes with a "Segmentation fault"** after you push an
+update: this is a low-level crash, not a normal Python error -- usually a
+dependency version mismatch in the container, not a bug in the app code.
+After pushing a requirements.txt fix, Streamlit Cloud can still be running
+on a cached, broken environment -- use the app's "⋮" menu -> **Reboot app**
+(clears the cache and reinstalls fresh) rather than waiting for it to
+recover on its own.
 
 **What about LinkedIn / Indeed / Naukri auto-apply, and `apply_bot.py`?**
 Two separate reasons these stay hands-off/local:
