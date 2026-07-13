@@ -21,7 +21,7 @@ Why it doesn't blind-submit by default:
     them -- it will pause and tell you to finish that step yourself.
 
 SETUP:
-  pip install -r requirements.txt
+  pip install -r requirements.txt -r requirements-apply-bot.txt
   playwright install chromium
   cp profile.json.example profile.json   # then fill in your real info
   # add target job posting URLs to career_urls.txt, one per line
