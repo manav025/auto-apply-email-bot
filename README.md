@@ -95,6 +95,15 @@ It covers everything the CLI does, plus:
   what's already there), downloadable as .docx.
 - **"Why you're a fit" 3-liner** -- a short pitch you can paste into cover
   letters, emails, or application free-text fields.
+- **Full cover letter generator** -- a complete, ready-to-send cover letter
+  tied to the job description, downloadable as .docx.
+- **Follow-up email generator** -- for when you've applied or emailed and
+  haven't heard back; drafts a short, polite nudge and can send it directly.
+- **Resume translation** -- translates your resume into another language
+  (natural phrasing, not literal word-for-word), downloadable as .docx.
+- **Interview prep sheet** -- likely behavioral and technical questions for
+  the role, with STAR-outline notes pointing to your real experience (not
+  full scripted answers -- it's practice prep, not a live-interview aid).
 - **Find open roles** -- searches Adzuna's free public API (a legitimate
   aggregator, not a scraper) and flags each result as auto-apply-safe
   (direct company career page → hand off to `apply_bot.py`) or manual-only
@@ -104,28 +113,45 @@ It covers everything the CLI does, plus:
 - **Bulk contacts via Excel/CSV upload** -- upload a sheet with just an
   `email` column and it fills in a guessed name from the address (e.g.
   `jane.doe@acme.com` → "Jane Doe") wherever you haven't provided one.
+- **Role/skill-smart job search** -- type a role and it suggests related
+  job titles and key skills (click to add); add skills and each result
+  shows how many match, or filter to skill-matches only.
+- **Freshers / entry-level filter** -- AI reads each listing's title and
+  description (Adzuna has no native filter for this) and flags which ones
+  look suitable for 0-2 years' experience / new graduates.
+- **Dark mode aware** -- follows your OS/browser light or dark preference
+  automatically, no setting to toggle.
+- **All credentials live in secrets, never on the page** -- there's no
+  field anywhere in the UI to type your Groq/Gmail/Adzuna keys. They're
+  read only from `.streamlit/secrets.toml` (local) or your app's Settings
+  -> Secrets (Streamlit Cloud). The sidebar just shows a checklist of
+  what's configured.
 
 **Try it locally first:**
 ```bash
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+# edit .streamlit/secrets.toml with your real GROQ_API_KEY, GMAIL_ADDRESS, etc.
 streamlit run streamlit_app.py
 ```
-Opens at http://localhost:8501. Enter your Groq/Gmail credentials in the
-sidebar (kept only for that browser session, never saved to disk). Adzuna
-keys are optional -- get a free pair at https://developer.adzuna.com/ if you
-want the "Find open roles" search.
+Opens at http://localhost:8501. The sidebar shows which credentials are
+detected -- if `GROQ_API_KEY` is missing it'll tell you exactly what to add
+and where. Adzuna keys are optional, only needed for "Find open roles" --
+get a free pair at https://developer.adzuna.com/.
 
 **Host it for free on Streamlit Community Cloud:**
-1. Push this repo to GitHub (steps below).
+1. Push this repo to GitHub (steps below). `secrets.toml` is gitignored, so
+   only the `.example` template goes up -- your real keys never leave your
+   machine via git.
 2. Go to https://share.streamlit.io, sign in with GitHub.
 3. Click "New app", pick this repo, branch `main`, main file `streamlit_app.py`.
 4. Deploy. You get a public `*.streamlit.app` URL that runs in Streamlit's
    cloud, not your machine.
-5. **Set secrets** (optional but recommended): in the app's Settings ->
-   Secrets, paste the contents of `.streamlit/secrets.toml.example` filled
-   in with your real values. This pre-fills the sidebar so you don't
-   retype credentials each visit, and lets you set `APP_PASSWORD` -- since
-   deployed apps get a public URL, this stops random visitors from opening
-   it and using your Gmail/Groq credentials.
+5. **Set secrets**: in the app's Settings -> Secrets, paste the contents of
+   `.streamlit/secrets.toml.example` filled in with your real values. This
+   is the *only* place your keys live for the deployed app -- there's no
+   sidebar field to alternatively type them into. Also set `APP_PASSWORD`
+   here, since the app gets a public URL and anyone who finds it could
+   otherwise use your Gmail/Groq/Adzuna credentials through it.
 
 Note: Community Cloud apps get 1 GB RAM and sleep when idle (a visit wakes
 them back up in a few seconds) -- plenty for this tool, since it's just API

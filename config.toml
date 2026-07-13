@@ -1,0 +1,12 @@
+# Pins a consistent light/purple theme regardless of the visitor's OS dark-mode
+# setting -- without this, Streamlit's native widgets (buttons, upload box,
+# text inputs) auto-switch to dark and clash with the custom card CSS in
+# streamlit_app.py. Safe to commit -- no secrets in here, just colors.
+
+[theme]
+base = "light"
+primaryColor = "#6D5BD0"
+backgroundColor = "#f7f6fd"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1e1b4b"
+font = "sans serif"

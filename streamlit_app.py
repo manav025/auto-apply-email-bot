@@ -5,15 +5,16 @@ Same functionality as job_email_sender.py, but as a browser UI you can run
 locally (`streamlit run streamlit_app.py`) or host for free on Streamlit
 Community Cloud, so nothing runs on your own laptop.
 
-Credentials are entered in the sidebar and kept only in this browser
-session -- they are never written to disk. If you deploy this publicly,
-set APP_PASSWORD in Streamlit's secrets so random visitors can't use your
-Gmail/Groq credentials.
+All credentials (Groq, Gmail, Adzuna) come from Streamlit secrets only --
+there is no UI field to type them in, so they never appear on screen or in
+browser session state. Set them in .streamlit/secrets.toml locally, or in
+your app's Settings -> Secrets on Streamlit Community Cloud.
 """
 
 import io
 import re
 import time
+import json
 
 import pandas as pd
 import pdfplumber
@@ -31,34 +32,61 @@ st.set_page_config(page_title="CV Analyzer & Job Finder", page_icon="📄", layo
 
 st.markdown("""
 <style>
-.stApp { background: linear-gradient(180deg, #f7f6fd 0%, #efedfb 100%); }
-.score-card { background:white; border-radius:20px; padding:28px 24px; box-shadow:0 2px 14px rgba(76,63,176,0.08); }
+:root {
+  --bg: #f7f6fd; --bg2: #efedfb; --card-bg: #ffffff; --text: #1e1b4b; --text-muted: #6b7280;
+  --border: #ece9f9; --input-bg: #ffffff; --purple: #6D5BD0; --track: #ece9f9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14122a; --bg2: #1a1733; --card-bg: #1f1c3d; --text: #f1eefc; --text-muted: #b3aed6;
+    --border: #34305f; --input-bg: #262247; --purple: #a996ff; --track: #322d5c;
+  }
+}
+.stApp { background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%) !important; }
+.stApp, .stApp p, .stApp span, .stApp label, .stMarkdown { color: var(--text); }
+.score-card, .job-card {
+  background: var(--card-bg) !important; color: var(--text);
+  border-radius:20px; padding:24px; box-shadow:0 2px 14px rgba(76,63,176,0.10);
+  border:1px solid var(--border);
+}
 .gauge-wrap { display:flex; flex-direction:column; align-items:center; padding-top:8px; }
 .chip { display:inline-block; padding:6px 14px; border-radius:999px; font-weight:600; font-size:0.85rem; margin:4px 6px 4px 0; }
-.chip-green { background:#d1fae5; color:#047857; }
-.chip-red { background:#fee2e2; color:#b91c1c; }
+.chip-green { background:#0f5132; color:#8ef7c1; }
+.chip-red { background:#5c1a1a; color:#ffb4b4; }
+@media (prefers-color-scheme: light) {
+  .chip-green { background:#d1fae5; color:#047857; }
+  .chip-red { background:#fee2e2; color:#b91c1c; }
+}
 .bar-row { margin-bottom:16px; }
-.bar-label { display:flex; justify-content:space-between; font-weight:600; color:#1e1b4b; margin-bottom:5px; }
-.bar-track { background:#ece9f9; border-radius:8px; height:9px; overflow:hidden; }
+.bar-label { display:flex; justify-content:space-between; font-weight:600; color:var(--text); margin-bottom:5px; }
+.bar-track { background:var(--track); border-radius:8px; height:9px; overflow:hidden; }
 .bar-fill { height:100%; border-radius:8px; }
-.job-card { background:white; border-radius:16px; padding:18px 20px; box-shadow:0 1px 8px rgba(76,63,176,0.08); margin-bottom:14px; }
-.badge { display:inline-block; padding:3px 11px; border-radius:999px; font-size:0.72rem; font-weight:700; background:#ede9fe; color:#5b21b6; margin-left:6px; vertical-align:middle; }
-.badge-ok { background:#d1fae5; color:#047857; }
-.badge-warn { background:#fef3c7; color:#92400e; }
-.section-title { font-size:1.4rem; font-weight:800; color:#1e1b4b; margin:0.2em 0 0.4em 0; }
+.badge { display:inline-block; padding:3px 11px; border-radius:999px; font-size:0.72rem; font-weight:700; background:#3a3166; color:#cabcff; margin-left:6px; vertical-align:middle; }
+.badge-ok { background:#0f5132; color:#8ef7c1; }
+.badge-warn { background:#5c4a12; color:#ffe08a; }
+@media (prefers-color-scheme: light) {
+  .badge { background:#ede9fe; color:#5b21b6; }
+  .badge-ok { background:#d1fae5; color:#047857; }
+  .badge-warn { background:#fef3c7; color:#92400e; }
+}
+.section-title { font-size:1.4rem; font-weight:800; color:var(--text); margin:0.2em 0 0.4em 0; }
+.skill-chip { display:inline-block; padding:5px 12px; border-radius:999px; font-size:0.82rem; font-weight:600;
+  margin:3px 5px 3px 0; background:var(--track); color:var(--purple); border:1px solid var(--border); }
+/* Nudge common native widgets to follow the same palette so they don't clash */
+[data-testid="stFileUploaderDropzone"], .stTextInput input, .stTextArea textarea,
+[data-baseweb="select"], .stNumberInput input {
+  background: var(--input-bg) !important; color: var(--text) !important; border-color: var(--border) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Optional password gate -- set APP_PASSWORD in Streamlit secrets to enable.
-# Without it, anyone with the app URL can open it (they'd still need their
-# own Groq/Gmail credentials to actually do anything, since nothing is
-# hardcoded server-side).
 # ---------------------------------------------------------------------------
 _app_password = st.secrets.get("APP_PASSWORD", "")
 if _app_password:
     if not st.session_state.get("unlocked"):
-        st.title("🔒 Job Email Assistant")
+        st.title("🔒 CV Analyzer & Job Finder")
         pw = st.text_input("App password", type="password")
         if st.button("Unlock"):
             if pw == _app_password:
@@ -69,30 +97,39 @@ if _app_password:
         st.stop()
 
 st.title("📄 CV Analyzer & Job Finder")
-st.caption("ATS scoring, JD match, AI-tailored resume, and outreach emails -- sent from your own Gmail, "
-           "using your own free Groq key. Nothing here runs on your machine.")
+st.caption("ATS scoring, JD match, AI-tailored resume, and outreach emails.")
 
 # ---------------------------------------------------------------------------
-# Sidebar: credentials (session-only, never saved to disk)
+# Credentials -- backend only, via Streamlit secrets. No UI fields for these,
+# so they're never typed, shown, or stored in the browser. Configure them in
+# .streamlit/secrets.toml (local) or Settings -> Secrets (Streamlit Cloud).
 # ---------------------------------------------------------------------------
+groq_key = st.secrets.get("GROQ_API_KEY", "")
+groq_model = st.secrets.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+gmail_address = st.secrets.get("GMAIL_ADDRESS", "")
+gmail_app_password = st.secrets.get("GMAIL_APP_PASSWORD", "")
+sender_name = st.secrets.get("SENDER_NAME", "")
+adzuna_app_id = st.secrets.get("ADZUNA_APP_ID", "")
+adzuna_app_key = st.secrets.get("ADZUNA_APP_KEY", "")
+
 with st.sidebar:
-    st.header("Your credentials")
-    st.caption("Kept only for this browser session.")
-    groq_key = st.text_input("Groq API key", type="password",
-                              value=st.secrets.get("GROQ_API_KEY", ""),
-                              help="Free, no card required: console.groq.com/keys")
-    groq_model = st.text_input("Groq model", value=st.secrets.get("GROQ_MODEL", "llama-3.3-70b-versatile"))
-    gmail_address = st.text_input("Gmail address", value=st.secrets.get("GMAIL_ADDRESS", ""))
-    gmail_app_password = st.text_input("Gmail app password", type="password",
-                                        value=st.secrets.get("GMAIL_APP_PASSWORD", ""),
-                                        help="Not your normal password -- create one at "
-                                             "myaccount.google.com/apppasswords")
-    sender_name = st.text_input("Your name (email sign-off)", value=st.secrets.get("SENDER_NAME", ""))
-    seconds_between = st.slider("Seconds to wait between sends", 5, 90, 30)
+    st.header("Setup status")
+    st.caption("All credentials live in Streamlit secrets, not on this page.")
+
+
+    def status_row(label, ok):
+        icon = "✅" if ok else "⬜"
+        st.markdown(f"{icon} {label}")
+
+
+    status_row("Groq API key (required)", bool(groq_key))
+    status_row("Gmail (for sending)", bool(gmail_address and gmail_app_password))
+    status_row("Adzuna (for job search)", bool(adzuna_app_id and adzuna_app_key))
+    if not groq_key:
+        st.warning("Add `GROQ_API_KEY` to `.streamlit/secrets.toml` to enable AI features. "
+                   "Free key: console.groq.com/keys")
     st.markdown("---")
-    st.caption("Optional, powers 'Find open roles' below")
-    adzuna_app_id = st.text_input("Adzuna App ID", value=st.secrets.get("ADZUNA_APP_ID", ""))
-    adzuna_app_key = st.text_input("Adzuna App Key", type="password", value=st.secrets.get("ADZUNA_APP_KEY", ""))
+    seconds_between = st.slider("Seconds to wait between sends", 5, 90, 30)
     st.markdown("---")
     st.markdown("[Free Groq key](https://console.groq.com/keys) · "
                 "[Gmail app passwords](https://myaccount.google.com/apppasswords) · "
@@ -339,6 +376,56 @@ Job description:
     return {"pct": pct, "matched": matched, "missing": missing, "notes": notes}
 
 
+SENIOR_TITLE_RE = re.compile(r"\b(senior|sr\.?|lead|principal|staff|director|head of|manager|vp|vice president)\b", re.I)
+
+
+def suggest_role_skills(role_text: str) -> dict:
+    prompt = f"""For the job role "{role_text}", suggest:
+1. Up to 6 closely related alternate job titles someone might also search for.
+2. Up to 10 key skills/keywords commonly required for this role.
+
+Respond with ONLY valid JSON: {{"related_roles": [...], "skills": [...]}}. No commentary.
+"""
+    data = parse_json_loose(call_ai(prompt, max_tokens=400))
+    if not isinstance(data, dict):
+        data = {}
+    return {
+        "related_roles": [r for r in (data.get("related_roles") or []) if isinstance(r, str)][:8],
+        "skills": [s for s in (data.get("skills") or []) if isinstance(s, str)][:12],
+    }
+
+
+def classify_freshers(results: list) -> set:
+    """One batched AI call classifying which listings suit freshers/entry-level
+    candidates, since Adzuna has no such filter natively. A title-based safety
+    net removes anything obviously senior even if the AI flagged it."""
+    items = [{
+        "id": str(j.get("id")),
+        "title": (j.get("title") or "")[:120],
+        "description": (j.get("description") or "")[:300],
+    } for j in results]
+    if not items or not groq_key:
+        return set()
+    prompt = f"""Given these job listings, return ONLY a JSON array of the "id" values for listings suitable for \
+freshers / entry-level candidates (0-2 years experience, new graduates, trainees). Judge from the title and \
+description -- look for phrases like "entry level", "fresher", "graduate", "trainee", "0-1 years", "no experience \
+required", or a clear absence of seniority requirements. Exclude anything requiring 3+ years, or titled \
+Senior/Lead/Principal/Manager/Director.
+
+Listings:
+{json.dumps(items)}
+
+Output ONLY a JSON array of matching id strings, e.g. ["123","456"]. No commentary.
+"""
+    try:
+        ids = parse_json_loose(call_ai(prompt, max_tokens=600))
+    except Exception:
+        ids = []
+    ai_ids = {str(i) for i in ids} if isinstance(ids, list) else set()
+    return {str(j.get("id")) for j in results
+            if str(j.get("id")) in ai_ids and not SENIOR_TITLE_RE.search(j.get("title") or "")}
+
+
 def render_gauge(score: int, label: str = "ATS SCORE") -> str:
     score = max(0, min(100, int(score)))
     if score >= 80:
@@ -464,10 +551,13 @@ if st.session_state.get("jd_match"):
         notes_html = "".join(f"<div style='margin-bottom:8px;'>✅ {n}</div>" for n in jm["notes"])
         st.markdown(f'<div class="score-card" style="margin-top:14px;">{notes_html}</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="section-title">3. AI resume tailoring & pitch</div>', unsafe_allow_html=True)
-tcol1, tcol2 = st.columns(2)
+st.markdown('<div class="section-title">3. AI Tools</div>', unsafe_allow_html=True)
 
-with tcol1:
+tab_tailor, tab_pitch, tab_cover, tab_followup, tab_translate, tab_interview = st.tabs(
+    ["Tailor Resume", "Fit Pitch", "Cover Letter", "Follow-up Email", "Translate Resume", "Interview Prep"]
+)
+
+with tab_tailor:
     if st.button("Tailor resume to this JD", disabled=not (resume_text and jd_text.strip() and groq_key)):
         with st.spinner("Tailoring resume..."):
             prompt = f"""You are rewriting a candidate's resume to better match a specific job description.
@@ -494,7 +584,19 @@ just the resume content with clear section headers.
 """
             st.session_state.tailored_resume = call_ai(prompt, max_tokens=2500)
 
-with tcol2:
+    if st.session_state.get("tailored_resume"):
+        st.warning("Content-only draft (plain formatting) -- doesn't preserve your original resume's visual "
+                   "design. Copy what's useful back into your real resume, or download this version.")
+        st.text_area("Tailored resume text", value=st.session_state.tailored_resume, height=300, key="tailored_view")
+        st.download_button(
+            "Download as .docx",
+            data=text_to_docx_bytes("Tailored Resume", st.session_state.tailored_resume),
+            file_name="tailored_resume.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="dl_tailored",
+        )
+
+with tab_pitch:
     if st.button("Generate 'why you're a fit' pitch", disabled=not (resume_text and groq_key)):
         with st.spinner("Writing pitch..."):
             prompt = f"""Write exactly 3 short sentences (not bullet points) explaining why this candidate is a \
@@ -513,39 +615,215 @@ Output only the 3 sentences, nothing else.
 """
             st.session_state.fit_pitch = call_ai(prompt, max_tokens=250)
 
-if st.session_state.get("tailored_resume"):
-    with st.expander("Tailored resume draft", expanded=True):
-        st.warning("This is a content-only draft (plain formatting) for you to review -- it does not preserve "
-                   "your original resume's visual design. Copy what's useful back into your real resume, or "
-                   "download this version below.")
-        st.text_area("Tailored resume text", value=st.session_state.tailored_resume, height=300, key="tailored_view")
-        st.download_button(
-            "Download as .docx",
-            data=text_to_docx_bytes("Tailored Resume", st.session_state.tailored_resume),
-            file_name="tailored_resume.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-
-if st.session_state.get("fit_pitch"):
-    with st.expander("Why you're a fit (3 lines)", expanded=True):
+    if st.session_state.get("fit_pitch"):
         st.text_area("Copy this into emails or application forms", value=st.session_state.fit_pitch,
                       height=100, key="fit_pitch_view")
+
+with tab_cover:
+    st.caption("A full, ready-to-send cover letter -- uses the job description above if you've pasted one.")
+    if st.button("Generate cover letter", disabled=not (resume_text and groq_key)):
+        with st.spinner("Writing cover letter..."):
+            prompt = f"""Write a complete, professional cover letter for this candidate.
+
+Candidate resume:
+---
+{resume_text}
+---
+
+{"Job description:\n---\n" + jd_text + "\n---" if jd_text.strip() else f"Target role: {target_role or 'a relevant role'}{f' at {target_company}' if target_company else ''}"}
+Sender's name to sign as: {sender_name or "[Your Name]"}
+
+Requirements:
+- 250-350 words, 3-4 paragraphs: an opening hook, 1-2 body paragraphs connecting specific real resume experience \
+to the role's needs, a closing call to action.
+- Professional but not stiff -- avoid cliches like "I am writing to express my interest."
+- Only reference real experience from the resume -- never invent achievements, employers, or skills.
+- Output the letter only, no commentary, ready to copy-paste or export.
+"""
+            st.session_state.cover_letter = call_ai(prompt, max_tokens=900)
+
+    if st.session_state.get("cover_letter"):
+        st.text_area("Cover letter", value=st.session_state.cover_letter, height=320, key="cover_letter_view")
+        st.download_button(
+            "Download as .docx",
+            data=text_to_docx_bytes("Cover Letter", st.session_state.cover_letter),
+            file_name="cover_letter.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="dl_cover",
+        )
+
+with tab_followup:
+    st.caption("For when you've already applied or emailed and haven't heard back.")
+    fcol1, fcol2 = st.columns(2)
+    fu_company = fcol1.text_input("Company", value=target_company, key="fu_company")
+    fu_role = fcol2.text_input("Role applied for", value=target_role, key="fu_role")
+    fcol3, fcol4 = st.columns(2)
+    fu_contact_name = fcol3.text_input("Contact name (optional)", key="fu_contact_name")
+    fu_days = fcol4.number_input("Days since you applied/last contacted", min_value=1, value=7, key="fu_days")
+    fu_notes = st.text_input("Anything else to mention (optional)", key="fu_notes")
+
+    if st.button("Generate follow-up email", disabled=not (resume_text and groq_key and fu_company and fu_role)):
+        with st.spinner("Drafting follow-up..."):
+            prompt = f"""Write a short, polite follow-up email checking on a job application.
+
+Candidate resume (for context):
+---
+{resume_text}
+---
+
+Company: {fu_company}
+Role applied for: {fu_role}
+Contact: {fu_contact_name or "Hiring team"}
+It has been {fu_days} days since applying/last contact.
+Extra context to weave in if useful: {fu_notes or "none"}
+Sender's name to sign as: {sender_name or "[Your Name]"}
+
+Requirements:
+- Subject line: short, references the role.
+- Body: 60-100 words. Polite, brief, no guilt-tripping, reaffirms interest with one concrete detail from the \
+resume, ends with a low-pressure ask (e.g. any update, happy to provide more info).
+- Output format exactly:
+SUBJECT: <subject line>
+BODY:
+<email body>
+"""
+            text = call_ai(prompt, max_tokens=350)
+            subject, body = "", text
+            if "SUBJECT:" in text and "BODY:" in text:
+                subject = text.split("SUBJECT:", 1)[1].split("BODY:", 1)[0].strip()
+                body = text.split("BODY:", 1)[1].strip()
+            st.session_state.followup = {"subject": subject, "body": body}
+
+    if st.session_state.get("followup"):
+        fu = st.session_state.followup
+        fu["subject"] = st.text_input("Subject", value=fu["subject"], key="fu_subject_view")
+        fu["body"] = st.text_area("Body", value=fu["body"], height=180, key="fu_body_view")
+        fu_send_to = st.text_input("Send to (email address)", key="fu_send_to")
+        if st.button("Send this follow-up now", disabled=not (fu_send_to and resume_file and gmail_address and gmail_app_password)):
+            try:
+                send_email(fu_send_to, fu["subject"], fu["body"], resume_file.getvalue(), resume_file.name)
+                st.success(f"Sent to {fu_send_to}")
+            except Exception as e:
+                st.error(f"Failed to send: {e}")
+
+with tab_translate:
+    st.caption("Content-only translation -- review with a native speaker before using for something high-stakes.")
+    lang = st.selectbox("Translate resume to", [
+        "Spanish", "French", "German", "Portuguese", "Italian", "Dutch",
+        "Hindi", "Mandarin Chinese", "Japanese", "Korean", "Arabic",
+    ], key="translate_lang")
+    if st.button("Translate resume", disabled=not (resume_text and groq_key)):
+        with st.spinner(f"Translating to {lang}..."):
+            prompt = f"""Translate this resume into {lang}. Keep the same structure and section order. Use \
+natural, professional resume phrasing appropriate for {lang}-speaking employers, not a literal word-for-word \
+translation. Do not add, remove, or change any facts, dates, numbers, or claims. Output only the translated \
+resume text, no commentary.
+
+Resume:
+---
+{resume_text}
+---
+"""
+            st.session_state.translated_resume = call_ai(prompt, max_tokens=2500)
+
+    if st.session_state.get("translated_resume"):
+        st.text_area(f"Translated resume ({lang})", value=st.session_state.translated_resume, height=320, key="translated_view")
+        st.download_button(
+            "Download as .docx",
+            data=text_to_docx_bytes(f"Resume ({lang})", st.session_state.translated_resume),
+            file_name=f"resume_{lang.lower().replace(' ', '_')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="dl_translated",
+        )
+
+with tab_interview:
+    st.caption("Practice prep -- questions and talking points to prepare *before* an interview, based on your "
+               "real experience. (Not a live tool for feeding you answers during an actual interview -- that "
+               "would mean the interviewer is evaluating answers you didn't actually give.)")
+    if st.button("Generate interview prep sheet", disabled=not (resume_text and groq_key)):
+        with st.spinner("Preparing questions..."):
+            prompt = f"""Create an interview prep sheet for this candidate.
+
+Candidate resume:
+---
+{resume_text}
+---
+
+{"Job description:\n---\n" + jd_text + "\n---" if jd_text.strip() else f"Target role: {target_role or 'a relevant role'}"}
+
+Produce:
+1. 5 likely behavioral questions for this role, each with a brief note on which real resume experience to draw \
+on and a suggested STAR-structure outline (Situation/Task/Action/Result) -- do not write out full answers, just \
+the outline and which real experience fits, so the candidate practices in their own words.
+2. 5 likely technical/role-specific questions based on the JD or target role.
+3. 3 smart questions the candidate can ask the interviewer.
+
+Only reference real experience already in the resume. No invented achievements.
+"""
+            st.session_state.interview_prep = call_ai(prompt, max_tokens=1500)
+
+    if st.session_state.get("interview_prep"):
+        st.markdown(st.session_state.interview_prep)
+        st.download_button(
+            "Download as .docx",
+            data=text_to_docx_bytes("Interview Prep Sheet", st.session_state.interview_prep),
+            file_name="interview_prep.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="dl_interview",
+        )
+
 
 # ---------------------------------------------------------------------------
 # 4. Find open roles (legitimate public job API -- not scraping LinkedIn/Indeed/Naukri)
 # ---------------------------------------------------------------------------
 st.markdown('<div class="section-title">4. Find open roles</div>', unsafe_allow_html=True)
-st.caption("Searches via Adzuna's public API (aggregates many boards legitimately, official API -- no scraping). "
-           "Add a free key in the sidebar to enable this.")
+st.caption("Searches via Adzuna's public API (aggregates many boards legitimately, official API -- no scraping).")
 
 if not (adzuna_app_id and adzuna_app_key):
-    st.info("Add your free Adzuna App ID/Key in the sidebar to search here -- "
+    st.info("Add `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` to secrets to enable this -- "
             "https://developer.adzuna.com/")
 else:
+    st.session_state.setdefault("job_search_kw", target_role)
+    st.session_state.setdefault("my_skills", [])
+
     scol1, scol2, scol3 = st.columns([2, 1, 1])
-    search_keyword = scol1.text_input("Keyword", value=target_role, key="job_search_kw")
+    search_keyword = scol1.text_input("Role", key="job_search_kw")
     search_country = scol2.selectbox("Country", ["us", "gb", "in", "ca", "au", "de", "fr"], index=0)
     search_page = scol3.number_input("Page", min_value=1, value=1)
+
+    if st.button("Suggest related roles & skills", disabled=not (search_keyword and groq_key)):
+        with st.spinner("Thinking..."):
+            st.session_state.role_suggestions = suggest_role_skills(search_keyword)
+
+    rs = st.session_state.get("role_suggestions")
+    if rs and (rs.get("related_roles") or rs.get("skills")):
+        if rs.get("related_roles"):
+            st.caption("Related roles -- click to search that instead:")
+            rcols = st.columns(min(len(rs["related_roles"]), 6) or 1)
+            for i, r in enumerate(rs["related_roles"]):
+                if rcols[i % len(rcols)].button(r, key=f"relrole_{i}", use_container_width=True):
+                    st.session_state.job_search_kw = r
+                    st.rerun()
+        if rs.get("skills"):
+            st.caption("Suggested skills -- click to add to your skill list:")
+            scols = st.columns(min(len(rs["skills"]), 6) or 1)
+            for i, s in enumerate(rs["skills"]):
+                if scols[i % len(scols)].button(f"+ {s}", key=f"addskill_{i}", use_container_width=True):
+                    if s not in st.session_state.my_skills:
+                        st.session_state.my_skills.append(s)
+                    st.rerun()
+
+    if st.session_state.my_skills:
+        chips = "".join(f'<span class="skill-chip">{s}</span>' for s in st.session_state.my_skills)
+        st.markdown(f"**Your skills:** {chips}", unsafe_allow_html=True)
+        if st.button("Clear skills"):
+            st.session_state.my_skills = []
+            st.rerun()
+
+    fcol1, fcol2 = st.columns(2)
+    fresher_only = fcol1.checkbox("🎓 Freshers / entry-level only",
+                                   help="AI reads each listing's title & description to judge this -- Adzuna has no native filter for it.")
+    skill_filter_on = fcol2.checkbox("Only listings matching my skills", disabled=not st.session_state.my_skills)
 
     if st.button("Search open roles", type="primary"):
         with st.spinner("Searching..."):
@@ -565,40 +843,62 @@ else:
             except Exception as e:
                 st.error(f"Search failed: {e}")
                 st.session_state.job_results = []
+        if st.session_state.job_results and groq_key:
+            with st.spinner("Checking which listings suit freshers..."):
+                st.session_state.fresher_ids = classify_freshers(st.session_state.job_results)
+        else:
+            st.session_state.fresher_ids = set()
 
     MANUAL_ONLY_DOMAINS = ["linkedin.com", "indeed.com", "naukri.com", "glassdoor.com"]
 
     results = st.session_state.get("job_results", [])
     if results:
         st.session_state.setdefault("saved_jobs", set())
-        fcol1, fcol2 = st.columns([3, 1])
-        fcol1.markdown(f"**Job Listings** &nbsp; <span style='color:#6b7280;'>{len(results)} results</span>",
-                        unsafe_allow_html=True)
-        show_saved_only = fcol2.checkbox("Saved only")
+        fresher_ids = st.session_state.get("fresher_ids", set())
+        my_skills_lower = [s.lower() for s in st.session_state.my_skills]
 
-        display_results = [
-            j for j in results
-            if not show_saved_only or j.get("id") in st.session_state.saved_jobs
-        ]
+        def skill_matches(job):
+            text = f"{job.get('title', '')} {job.get('description', '')}".lower()
+            return [s for s in st.session_state.my_skills if s.lower() in text]
+
+        display_results = []
+        for j in results:
+            if fresher_only and str(j.get("id")) not in fresher_ids:
+                continue
+            matches = skill_matches(j) if my_skills_lower else []
+            if skill_filter_on and my_skills_lower and not matches:
+                continue
+            display_results.append((j, matches))
+
+        fcol1, fcol2 = st.columns([3, 1])
+        fcol1.markdown(f"**Job Listings** &nbsp; <span style='color:var(--text-muted);'>{len(display_results)} "
+                       f"of {len(results)} results</span>", unsafe_allow_html=True)
+        show_saved_only = fcol2.checkbox("Saved only")
+        if show_saved_only:
+            display_results = [(j, m) for j, m in display_results if j.get("id") in st.session_state.saved_jobs]
 
         cols = st.columns(3)
-        for idx, job in enumerate(display_results):
+        for idx, (job, matches) in enumerate(display_results):
             url = job.get("redirect_url", "")
             company = (job.get("company") or {}).get("display_name", "Unknown company")
             title = job.get("title", "Untitled role")
             location = (job.get("location") or {}).get("display_name", "")
             job_id = job.get("id")
             manual_only = any(d in url for d in MANUAL_ONLY_DOMAINS)
-            badge_html = (f'<span class="badge badge-warn">MANUAL APPLY</span>' if manual_only
-                          else f'<span class="badge badge-ok">AUTO-APPLY OK</span>')
+            badges = (f'<span class="badge badge-warn">MANUAL APPLY</span>' if manual_only
+                      else f'<span class="badge badge-ok">AUTO-APPLY OK</span>')
+            if str(job_id) in fresher_ids:
+                badges += ' <span class="badge badge-ok">🎓 FRESHER FRIENDLY</span>'
+            if st.session_state.my_skills:
+                badges += f' <span class="badge">{len(matches)}/{len(st.session_state.my_skills)} skills matched</span>'
 
             with cols[idx % 3]:
                 st.markdown(
                     f"""<div class="job-card">
-                        <div style="font-weight:800;color:#1e1b4b;font-size:1.05rem;">{title}</div>
-                        <div style="color:#4b5563;margin:4px 0;">🏢 {company}</div>
-                        <div style="color:#6b7280;font-size:0.9rem;margin-bottom:8px;">📍 {location}</div>
-                        {badge_html}
+                        <div style="font-weight:800;font-size:1.05rem;">{title}</div>
+                        <div style="opacity:0.85;margin:4px 0;">🏢 {company}</div>
+                        <div style="opacity:0.7;font-size:0.9rem;margin-bottom:8px;">📍 {location}</div>
+                        {badges}
                     </div>""",
                     unsafe_allow_html=True,
                 )
