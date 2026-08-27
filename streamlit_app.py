@@ -21,6 +21,7 @@ import pdfplumber
 import docx
 import requests
 import streamlit as st
+import groq
 from groq import Groq
 import smtplib
 import ssl
@@ -105,7 +106,7 @@ st.caption("ATS scoring, JD match, AI-tailored resume, and outreach emails.")
 # .streamlit/secrets.toml (local) or Settings -> Secrets (Streamlit Cloud).
 # ---------------------------------------------------------------------------
 groq_key = st.secrets.get("GROQ_API_KEY", "")
-groq_model = st.secrets.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+groq_model = st.secrets.get("GROQ_MODEL", "llama-3.1-8b-instant")
 gmail_address = st.secrets.get("GMAIL_ADDRESS", "")
 gmail_app_password = st.secrets.get("GMAIL_APP_PASSWORD", "")
 sender_name = st.secrets.get("SENDER_NAME", "")
@@ -140,13 +141,39 @@ def call_ai(prompt: str, max_tokens: int = 1000) -> str:
     if not groq_key:
         raise RuntimeError("Enter your Groq API key in the sidebar first.")
     client = Groq(api_key=groq_key)
-    resp = client.chat.completions.create(
-        model=groq_model,
-        max_tokens=max_tokens,
-        temperature=0.6,
-        messages=[{"role": "user", "content": prompt}],
+    fallback_models = [
+        groq_model,
+        "llama-3.1-8b-instant",
+        "llama3-70b-8192",
+    ]
+    models_to_try = []
+    for model_name in fallback_models:
+        if model_name and model_name not in models_to_try:
+            models_to_try.append(model_name)
+
+    for model_name in models_to_try:
+        try:
+            resp = client.chat.completions.create(
+                model=model_name,
+                max_tokens=max_tokens,
+                temperature=0.6,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            if model_name != groq_model and not st.session_state.get("groq_model_fallback_notice_shown"):
+                st.warning(
+                    f"GROQ_MODEL '{groq_model}' was not found. "
+                    f"Using fallback model '{model_name}'."
+                )
+                st.session_state.groq_model_fallback_notice_shown = True
+            return resp.choices[0].message.content.strip()
+        except groq.NotFoundError:
+            continue
+
+    tried = ", ".join(models_to_try)
+    raise RuntimeError(
+        "No available Groq model was found for this app. "
+        f"Tried: {tried}. Update GROQ_MODEL in Streamlit secrets to a currently supported model."
     )
-    return resp.choices[0].message.content.strip()
 
 
 def extract_resume_text(uploaded_file) -> str:
