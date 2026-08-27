@@ -1,3 +1,3 @@
-email,name,role,company,job_title
-jane.doe@example.com,Jane Doe,Engineering Manager,Acme Corp,Software Engineer
-recruiter@example.com,,Recruiter,Acme Corp,Software Engineer
+email,name,role,company,job_title,company_note,contact_note,project_match,tone,custom_subject
+jane.doe@example.com,Jane Doe,Engineering Manager,Acme Corp,Software Engineer,"Loved Acme's recent GenAI developer productivity post.","Met at the campus tech talk in July.","Real-time automation project shipped with measurable latency gains.",friendly,"Quick intro for Software Engineer at Acme"
+recruiter@example.com,,Recruiter,Acme Corp,Software Engineer,"Excited about Acme's backend platform growth.",,Distributed systems and Python automation experience.,professional,

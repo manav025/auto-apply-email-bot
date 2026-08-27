@@ -199,6 +199,52 @@ def name_from_email(email: str) -> str:
     return " ".join(p.capitalize() for p in parts)
 
 
+CONTACT_OPTIONAL_COLUMNS = [
+    "name",
+    "role",
+    "company",
+    "job_title",
+    "company_note",
+    "contact_note",
+    "project_match",
+    "tone",
+    "custom_subject",
+]
+CONTACT_REQUIRED_COLUMNS = ["email"]
+CONTACT_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+GENERIC_DRAFT_PATTERNS = [
+    r"\bi am writing to express\b",
+    r"\bto whom it may concern\b",
+    r"\bdear hiring manager\b",
+    r"\bplease find attached\b",
+    r"\bany opportunities\b",
+]
+
+
+def validate_uploaded_contacts(df: pd.DataFrame) -> tuple[list[int], list[int], list[str]]:
+    email_series = df["email"].astype(str).str.strip()
+    blank_rows = (email_series == "")
+    invalid_rows = (~blank_rows) & (~email_series.str.match(CONTACT_EMAIL_RE))
+    row_numbers_blank = (df.index[blank_rows] + 2).tolist()
+    row_numbers_invalid = (df.index[invalid_rows] + 2).tolist()
+    dup_emails = email_series[email_series != ""].str.lower()
+    duplicate_values = sorted(dup_emails[dup_emails.duplicated(keep=False)].unique().tolist())
+    return row_numbers_blank, row_numbers_invalid, duplicate_values
+
+
+def evaluate_draft_quality(body: str, contact_name: str, company: str) -> list[str]:
+    flags = []
+    body_l = (body or "").lower()
+    if contact_name and contact_name.lower() not in body_l:
+        flags.append("Contact name not explicitly mentioned in body.")
+    if company and company.lower() not in body_l:
+        flags.append("Company name not explicitly mentioned in body.")
+    generic_hits = sum(1 for pat in GENERIC_DRAFT_PATTERNS if re.search(pat, body_l))
+    if generic_hits >= 2:
+        flags.append("Draft appears generic; review personalization before sending.")
+    return flags
+
+
 def text_to_docx_bytes(title: str, body_text: str) -> bytes:
     """Wrap plain text into a simple, clean .docx (not a reproduction of the
     original resume's visual design -- just a readable, ATS-friendly draft)."""
@@ -930,14 +976,14 @@ else:
 # 5. Contacts
 # ---------------------------------------------------------------------------
 st.markdown('<div class="section-title">5. Contacts</div>', unsafe_allow_html=True)
-st.caption("Add each person you want to email. Leave name/role/job_title blank to fall back to the defaults above "
-           "-- if name is blank, it'll be guessed from the email address instead.")
+st.caption("Add each person you want to email. Leave name/role/job_title blank to fall back to defaults. Optional "
+           "personalization columns: company_note, contact_note, project_match, tone, custom_subject.")
 
 upload_col, _ = st.columns([1, 2])
 uploaded_contacts = upload_col.file_uploader(
     "Or upload a contact list (.csv or .xlsx)",
     type=["csv", "xlsx"],
-    help="Needs at least an 'email' column. 'name', 'role', 'company', 'job_title' columns are optional.",
+    help="Needs 'email'. Optional: name, role, company, job_title, company_note, contact_note, project_match, tone, custom_subject.",
 )
 if uploaded_contacts is not None:
     try:
@@ -946,21 +992,38 @@ if uploaded_contacts is not None:
         else:
             up_df = pd.read_csv(uploaded_contacts)
         up_df.columns = [c.strip().lower() for c in up_df.columns]
-        if "email" not in up_df.columns:
-            st.error("That file needs an 'email' column.")
+        missing_required = [c for c in CONTACT_REQUIRED_COLUMNS if c not in up_df.columns]
+        if missing_required:
+            st.error(f"Missing required column(s): {', '.join(missing_required)}")
         else:
-            for col in ["name", "role", "company", "job_title"]:
+            for col in CONTACT_OPTIONAL_COLUMNS:
                 if col not in up_df.columns:
                     up_df[col] = ""
-            up_df = up_df[["email", "name", "role", "company", "job_title"]].fillna("")
+            up_df = up_df[["email"] + CONTACT_OPTIONAL_COLUMNS].fillna("")
+            up_df = up_df.astype(str).apply(lambda col: col.str.strip())
+
+            blank_rows, invalid_rows, duplicate_emails = validate_uploaded_contacts(up_df)
+            if blank_rows:
+                st.warning(f"Rows with blank email: {blank_rows[:10]}{' ...' if len(blank_rows) > 10 else ''}")
+            if invalid_rows:
+                st.warning(f"Rows with invalid email format: {invalid_rows[:10]}{' ...' if len(invalid_rows) > 10 else ''}")
+            if duplicate_emails:
+                st.warning("Duplicate email(s) detected: " + ", ".join(duplicate_emails[:10]) +
+                           (" ..." if len(duplicate_emails) > 10 else ""))
+
             st.session_state.recipients_df = up_df
             st.success(f"Loaded {len(up_df)} contact(s) from {uploaded_contacts.name}")
+            st.caption("Parsed preview (first 3 rows)")
+            st.dataframe(up_df.head(3), use_container_width=True, hide_index=True)
     except Exception as e:
         st.error(f"Couldn't read that file: {e}")
 
 if "recipients_df" not in st.session_state:
     st.session_state.recipients_df = pd.DataFrame(
-        [{"email": "", "name": "", "role": "", "company": "", "job_title": ""}]
+        [{
+            "email": "", "name": "", "role": "", "company": "", "job_title": "",
+            "company_note": "", "contact_note": "", "project_match": "", "tone": "", "custom_subject": ""
+        }]
     )
 
 recipients_df = st.data_editor(
@@ -976,17 +1039,75 @@ st.session_state.recipients_df = recipients_df
 # ---------------------------------------------------------------------------
 st.markdown('<div class="section-title">6. Draft emails</div>', unsafe_allow_html=True)
 
+global_fixed_message = st.text_area(
+    "About me / what I’m looking for (included in every email)",
+    value=(st.session_state.get("global_fixed_message")
+           or f"I’m looking for {target_role or 'a relevant role'} opportunities and would value a quick conversation."),
+    height=90,
+)
+st.session_state.global_fixed_message = global_fixed_message
+
+cta_options = ["referral request", "recruiter connect", "hiring manager intro"]
+current_cta = st.session_state.get("cta_style", "recruiter connect")
+if current_cta not in cta_options:
+    current_cta = "recruiter connect"
+cta_style = st.selectbox(
+    "Call to action style",
+    options=cta_options,
+    index=cta_options.index(current_cta),
+)
+st.session_state.cta_style = cta_style
+
+lcol1, lcol2 = st.columns(2)
+lock_fixed_section = lcol1.checkbox("Lock fixed message text (verbatim)", value=True)
+lock_personalization_section = lcol2.checkbox("Lock row personalization snippets (verbatim)", value=True)
+
+st.caption("Template preview")
+st.info(
+    "Greeting → Fixed message → Company/contact personalization → Fit proof from your resume → "
+    "CTA → Signoff"
+)
+
 if st.button("Generate drafts", disabled=not (resume_text and groq_key)):
     rows = recipients_df[recipients_df["email"].astype(str).str.strip() != ""]
     if rows.empty:
         st.warning("Add at least one contact with an email address above.")
     else:
         drafts = []
+        cta_text_map = {
+            "referral request": "Ask for a referral if they think your background fits.",
+            "recruiter connect": "Ask for a brief recruiter conversation about relevant roles.",
+            "hiring manager intro": "Ask for a short intro call with the hiring manager/team.",
+        }
+        fixed_message = global_fixed_message.strip() or (
+            f"I’m looking for {target_role or 'a relevant role'} opportunities and would value a quick conversation."
+        )
         progress = st.progress(0.0, text="Drafting emails...")
         for i, row in enumerate(rows.to_dict("records")):
             company = row.get("company") or target_company
             job_title = row.get("job_title") or target_role
             contact_name = row.get("name") or name_from_email(row["email"]) or "Hiring contact"
+            company_note = (row.get("company_note") or "").strip()
+            contact_note = (row.get("contact_note") or "").strip()
+            project_match = (row.get("project_match") or "").strip()
+            tone = (row.get("tone") or "").strip() or "professional"
+            custom_subject = (row.get("custom_subject") or "").strip()
+
+            personalization_lines = []
+            if company_note:
+                personalization_lines.append(f"- Company note: {company_note}")
+            if contact_note:
+                personalization_lines.append(f"- Contact note: {contact_note}")
+            if project_match:
+                personalization_lines.append(f"- Project/skill match to mention: {project_match}")
+            personalization_block = "\n".join(personalization_lines) if personalization_lines else "None provided."
+            lock_fixed_instruction = ("Include the fixed message EXACTLY as written, without rephrasing."
+                                      if lock_fixed_section else "You may lightly polish the fixed message.")
+            lock_personalization_instruction = (
+                "If personalization snippets are present, keep their meaning and key wording intact."
+                if lock_personalization_section else
+                "You may rewrite personalization snippets for flow."
+            )
             prompt = f"""Write a concise, professional job-outreach email from a candidate to a contact at a company.
 
 Candidate resume (for context on real background -- do not fabricate anything not in here):
@@ -997,13 +1118,28 @@ Candidate resume (for context on real background -- do not fabricate anything no
 Recipient: {contact_name}{f", {row.get('role')}" if row.get("role") else ""} at {company or "the company"}
 Target position: {job_title or "a relevant open role"}
 Sender's name to sign as: {sender_name or "[Your Name]"}
+Preferred tone: {tone}
+CTA style: {cta_style} ({cta_text_map.get(cta_style, '')})
+
+Fixed message to include in every email:
+<<FIXED_MESSAGE>>
+{fixed_message}
+<</FIXED_MESSAGE>>
+
+Per-contact personalization snippets:
+{personalization_block}
 
 Requirements:
 - Subject line: short, specific, not spammy
 - Body: 120-180 words, warm but professional, no generic filler ("I am writing to express...")
 - Reference 1-2 concrete, real details from the resume that make the candidate relevant{" to the job description" if jd_text.strip() else ""}
+- Must mention both the recipient/company context and the target role
+- Must include the fixed message block in the body
+- Use personalization snippets when present
 - Mention the resume is attached
-- End with a clear, low-pressure call to action
+- End with a clear, low-pressure call to action matching CTA style
+- {lock_fixed_instruction}
+- {lock_personalization_instruction}
 - No markdown, no placeholders left unfilled except sign-off name if not provided
 - Output format exactly:
 SUBJECT: <subject line>
@@ -1015,15 +1151,28 @@ BODY:
             if "SUBJECT:" in text and "BODY:" in text:
                 subject = text.split("SUBJECT:", 1)[1].split("BODY:", 1)[0].strip()
                 body = text.split("BODY:", 1)[1].strip()
-            drafts.append({"email": row["email"], "subject": subject, "body": body})
+            if custom_subject:
+                subject = custom_subject
+            quality_flags = evaluate_draft_quality(body, contact_name, company or "")
+            drafts.append({
+                "email": row["email"],
+                "subject": subject,
+                "body": body,
+                "quality_flags": quality_flags,
+            })
             progress.progress((i + 1) / len(rows), text=f"Drafted {i + 1}/{len(rows)}")
         st.session_state.drafts = drafts
         st.rerun()
 
 if st.session_state.get("drafts"):
     st.subheader("Review & edit before sending")
+    flagged = sum(1 for d in st.session_state.drafts if d.get("quality_flags"))
+    if flagged:
+        st.warning(f"{flagged} draft(s) flagged for manual review due to weak personalization.")
     for i, d in enumerate(st.session_state.drafts):
         with st.expander(f"✉️ {d['email']} — {d['subject']}"):
+            if d.get("quality_flags"):
+                st.warning(" | ".join(d["quality_flags"]))
             d["subject"] = st.text_input("Subject", value=d["subject"], key=f"subj_{i}")
             d["body"] = st.text_area("Body", value=d["body"], height=220, key=f"body_{i}")
 

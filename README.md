@@ -110,9 +110,11 @@ It covers everything the CLI does, plus:
   (LinkedIn/Indeed/Naukri/Glassdoor → these platforms' own terms prohibit
   automated applying, so you apply yourself using the fit-pitch/tailored
   resume above).
-- **Bulk contacts via Excel/CSV upload** -- upload a sheet with just an
-  `email` column and it fills in a guessed name from the address (e.g.
-  `jane.doe@acme.com` → "Jane Doe") wherever you haven't provided one.
+- **Bulk contacts via Excel/CSV upload** -- upload a sheet with required
+  `email`, plus optional `name, role, company, job_title, company_note,
+  contact_note, project_match, tone, custom_subject` columns for stronger
+  personalization. If `name` is blank, it guesses from the email address
+  (e.g. `jane.doe@acme.com` → "Jane Doe").
 - **Role/skill-smart job search** -- type a role and it suggests related
   job titles and key skills (click to add); add skills and each result
   shows how many match, or filter to skill-matches only.
@@ -237,7 +239,7 @@ credentials and should never end up in a public repo.
 | `ai_client.py` | Shared Groq API wrapper (used by the CLI tools) |
 | `.env` | Your secrets for CLI use (create from `.env.example`) |
 | `.streamlit/secrets.toml` | Your secrets for the web app (create from `.streamlit/secrets.toml.example`) |
-| `recipients.csv` | People to email (create from `.example`) |
+| `recipients.csv` | People to email (required `email`; optional personalization columns, create from `.example`) |
 | `career_urls.txt` | Job postings to auto-apply to (create from `.example`) |
 | `profile.json` | Your factual info for auto-fill (create from `.example`) |
 | `resume_suggestions.md` | Generated resume feedback |
