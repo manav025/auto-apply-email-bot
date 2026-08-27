@@ -1,27 +1,33 @@
 """
-Shared AI client -- wraps Groq's free-tier API (OpenAI-compatible).
+Shared AI client -- wraps AgentRouter's OpenAI-compatible API for Claude Opus 4.8.
+AgentRouter is a third-party gateway (not an official Anthropic product) that
+proxies requests to Claude and other models behind one API key.
 
-Get a free API key at https://console.groq.com/keys (no credit card required).
-Groq's free tier gives generous daily request/token limits on open models
-like Llama 3.3, which is what this project uses by default.
+Set these in your .env:
+  AGENTROUTER_API_KEY=sk-...                     (required)
+  AGENTROUTER_BASE_URL=https://agentrouter.org/v1 (check your dashboard/docs --
+                                                    some setups use co.agentrouter.org
+                                                    or a different path)
+  AGENTROUTER_MODEL=claude-opus-4-8               (or whatever model ID your
+                                                    AgentRouter account lists)
 """
-
 import os
-from groq import Groq
+from openai import OpenAI
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+AGENTROUTER_API_KEY = os.getenv("AGENTROUTER_API_KEY")
+AGENTROUTER_BASE_URL = os.getenv("AGENTROUTER_BASE_URL", "https://agentrouter.org/v1")
+MODEL = os.getenv("AGENTROUTER_MODEL", "claude-opus-4-8")
 
 _client = None
 
 
-def get_client() -> Groq:
+def get_client() -> OpenAI:
     global _client
-    if not GROQ_API_KEY:
-        raise RuntimeError("Missing GROQ_API_KEY in .env. Get a free key at "
-                            "https://console.groq.com/keys")
+    if not AGENTROUTER_API_KEY:
+        raise RuntimeError("Missing AGENTROUTER_API_KEY in .env. Get one from "
+                            "your AgentRouter dashboard.")
     if _client is None:
-        _client = Groq(api_key=GROQ_API_KEY)
+        _client = OpenAI(api_key=AGENTROUTER_API_KEY, base_url=AGENTROUTER_BASE_URL)
     return _client
 
 
