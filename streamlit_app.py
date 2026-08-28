@@ -5,7 +5,7 @@ Same functionality as job_email_sender.py, but as a browser UI you can run
 locally (`streamlit run streamlit_app.py`) or host for free on Streamlit
 Community Cloud, so nothing runs on your own laptop.
 
-All credentials (Groq, Gmail, Adzuna) come from Streamlit secrets only --
+All credentials (AgentRouter, Gmail, Adzuna) come from Streamlit secrets only --
 there is no UI field to type them in, so they never appear on screen or in
 browser session state. Set them in .streamlit/secrets.toml locally, or in
 your app's Settings -> Secrets on Streamlit Community Cloud.
@@ -21,8 +21,7 @@ import pdfplumber
 import docx
 import requests
 import streamlit as st
-import groq
-from groq import Groq
+from openai import OpenAI
 import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
@@ -105,8 +104,9 @@ st.caption("ATS scoring, JD match, AI-tailored resume, and outreach emails.")
 # so they're never typed, shown, or stored in the browser. Configure them in
 # .streamlit/secrets.toml (local) or Settings -> Secrets (Streamlit Cloud).
 # ---------------------------------------------------------------------------
-groq_key = st.secrets.get("GROQ_API_KEY", "")
-groq_model = st.secrets.get("GROQ_MODEL", "llama-3.1-8b-instant")
+agentrouter_api_key = st.secrets.get("AGENTROUTER_API_KEY", "")
+agentrouter_base_url = st.secrets.get("AGENTROUTER_BASE_URL", "https://agentrouter.org/v1")
+agentrouter_model = st.secrets.get("AGENTROUTER_MODEL", "claude-opus-4-8")
 gmail_address = st.secrets.get("GMAIL_ADDRESS", "")
 gmail_app_password = st.secrets.get("GMAIL_APP_PASSWORD", "")
 sender_name = st.secrets.get("SENDER_NAME", "")
@@ -123,57 +123,30 @@ with st.sidebar:
         st.markdown(f"{icon} {label}")
 
 
-    status_row("Groq API key (required)", bool(groq_key))
+    status_row("AgentRouter API key (required)", bool(agentrouter_api_key))
     status_row("Gmail (for sending)", bool(gmail_address and gmail_app_password))
     status_row("Adzuna (for job search)", bool(adzuna_app_id and adzuna_app_key))
-    if not groq_key:
-        st.warning("Add `GROQ_API_KEY` to `.streamlit/secrets.toml` to enable AI features. "
-                   "Free key: console.groq.com/keys")
+    if not agentrouter_api_key:
+        st.warning("Add `AGENTROUTER_API_KEY` to `.streamlit/secrets.toml` to enable AI features.")
     st.markdown("---")
     seconds_between = st.slider("Seconds to wait between sends", 5, 90, 30)
     st.markdown("---")
-    st.markdown("[Free Groq key](https://console.groq.com/keys) · "
+    st.markdown("[AgentRouter setup](https://agentrouter.org) · "
                 "[Gmail app passwords](https://myaccount.google.com/apppasswords) · "
                 "[Free Adzuna API key](https://developer.adzuna.com/)")
 
 
 def call_ai(prompt: str, max_tokens: int = 1000) -> str:
-    if not groq_key:
-        raise RuntimeError("Enter your Groq API key in the sidebar first.")
-    client = Groq(api_key=groq_key)
-    fallback_models = [
-        groq_model,
-        "llama-3.1-8b-instant",
-        "llama3-70b-8192",
-    ]
-    models_to_try = []
-    for model_name in fallback_models:
-        if model_name and model_name not in models_to_try:
-            models_to_try.append(model_name)
-
-    for model_name in models_to_try:
-        try:
-            resp = client.chat.completions.create(
-                model=model_name,
-                max_tokens=max_tokens,
-                temperature=0.6,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            if model_name != groq_model and not st.session_state.get("groq_model_fallback_notice_shown"):
-                st.warning(
-                    f"GROQ_MODEL '{groq_model}' was not found. "
-                    f"Using fallback model '{model_name}'."
-                )
-                st.session_state.groq_model_fallback_notice_shown = True
-            return resp.choices[0].message.content.strip()
-        except groq.NotFoundError:
-            continue
-
-    tried = ", ".join(models_to_try)
-    raise RuntimeError(
-        "No available Groq model was found for this app. "
-        f"Tried: {tried}. Update GROQ_MODEL in Streamlit secrets to a currently supported model."
+    if not agentrouter_api_key:
+        raise RuntimeError("Add your AgentRouter API key in Streamlit secrets first.")
+    client = OpenAI(api_key=agentrouter_api_key, base_url=agentrouter_base_url)
+    resp = client.chat.completions.create(
+        model=agentrouter_model,
+        max_tokens=max_tokens,
+        temperature=0.6,
+        messages=[{"role": "user", "content": prompt}],
     )
+    return resp.choices[0].message.content.strip()
 
 
 def extract_resume_text(uploaded_file) -> str:
@@ -477,7 +450,7 @@ def classify_freshers(results: list) -> set:
         "title": (j.get("title") or "")[:120],
         "description": (j.get("description") or "")[:300],
     } for j in results]
-    if not items or not groq_key:
+    if not items or not agentrouter_api_key:
         return set()
     prompt = f"""Given these job listings, return ONLY a JSON array of the "id" values for listings suitable for \
 freshers / entry-level candidates (0-2 years experience, new graduates, trainees). Judge from the title and \
@@ -568,7 +541,7 @@ target_role = col1.text_input("Target role", value=st.secrets.get("TARGET_ROLE",
 target_company = col2.text_input("Default target company (optional -- can override per contact below)",
                                   value=st.secrets.get("TARGET_COMPANY", ""))
 
-if st.button("Analyze CV", type="primary", disabled=not (resume_text and groq_key)):
+if st.button("Analyze CV", type="primary", disabled=not (resume_text and agentrouter_api_key)):
     with st.spinner("Scoring your resume..."):
         st.session_state.ats = run_ats_analysis(resume_text, target_role, target_company)
 
@@ -599,7 +572,7 @@ jd_text = st.text_area(
     help="Also powers resume tailoring and the 'why you're a fit' pitch below.",
 )
 
-if st.button("Analyze Match", type="primary", disabled=not (resume_text and jd_text.strip() and groq_key)):
+if st.button("Analyze Match", type="primary", disabled=not (resume_text and jd_text.strip() and agentrouter_api_key)):
     with st.spinner("Comparing your CV to this JD..."):
         st.session_state.jd_match = analyze_jd_match(resume_text, jd_text)
 
@@ -631,7 +604,7 @@ tab_tailor, tab_pitch, tab_cover, tab_followup, tab_translate, tab_interview = s
 )
 
 with tab_tailor:
-    if st.button("Tailor resume to this JD", disabled=not (resume_text and jd_text.strip() and groq_key)):
+    if st.button("Tailor resume to this JD", disabled=not (resume_text and jd_text.strip() and agentrouter_api_key)):
         with st.spinner("Tailoring resume..."):
             prompt = f"""You are rewriting a candidate's resume to better match a specific job description.
 
@@ -670,7 +643,7 @@ just the resume content with clear section headers.
         )
 
 with tab_pitch:
-    if st.button("Generate 'why you're a fit' pitch", disabled=not (resume_text and groq_key)):
+    if st.button("Generate 'why you're a fit' pitch", disabled=not (resume_text and agentrouter_api_key)):
         with st.spinner("Writing pitch..."):
             prompt = f"""Write exactly 3 short sentences (not bullet points) explaining why this candidate is a \
 strong fit for this specific role. This will be used as an opening pitch in outreach emails or pasted into an \
@@ -694,7 +667,7 @@ Output only the 3 sentences, nothing else.
 
 with tab_cover:
     st.caption("A full, ready-to-send cover letter -- uses the job description above if you've pasted one.")
-    if st.button("Generate cover letter", disabled=not (resume_text and groq_key)):
+    if st.button("Generate cover letter", disabled=not (resume_text and agentrouter_api_key)):
         with st.spinner("Writing cover letter..."):
             prompt = f"""Write a complete, professional cover letter for this candidate.
 
@@ -735,7 +708,7 @@ with tab_followup:
     fu_days = fcol4.number_input("Days since you applied/last contacted", min_value=1, value=7, key="fu_days")
     fu_notes = st.text_input("Anything else to mention (optional)", key="fu_notes")
 
-    if st.button("Generate follow-up email", disabled=not (resume_text and groq_key and fu_company and fu_role)):
+    if st.button("Generate follow-up email", disabled=not (resume_text and agentrouter_api_key and fu_company and fu_role)):
         with st.spinner("Drafting follow-up..."):
             prompt = f"""Write a short, polite follow-up email checking on a job application.
 
@@ -785,7 +758,7 @@ with tab_translate:
         "Spanish", "French", "German", "Portuguese", "Italian", "Dutch",
         "Hindi", "Mandarin Chinese", "Japanese", "Korean", "Arabic",
     ], key="translate_lang")
-    if st.button("Translate resume", disabled=not (resume_text and groq_key)):
+    if st.button("Translate resume", disabled=not (resume_text and agentrouter_api_key)):
         with st.spinner(f"Translating to {lang}..."):
             prompt = f"""Translate this resume into {lang}. Keep the same structure and section order. Use \
 natural, professional resume phrasing appropriate for {lang}-speaking employers, not a literal word-for-word \
@@ -813,7 +786,7 @@ with tab_interview:
     st.caption("Practice prep -- questions and talking points to prepare *before* an interview, based on your "
                "real experience. (Not a live tool for feeding you answers during an actual interview -- that "
                "would mean the interviewer is evaluating answers you didn't actually give.)")
-    if st.button("Generate interview prep sheet", disabled=not (resume_text and groq_key)):
+    if st.button("Generate interview prep sheet", disabled=not (resume_text and agentrouter_api_key)):
         with st.spinner("Preparing questions..."):
             prompt = f"""Create an interview prep sheet for this candidate.
 
@@ -864,7 +837,7 @@ else:
     search_country = scol2.selectbox("Country", ["us", "gb", "in", "ca", "au", "de", "fr"], index=0)
     search_page = scol3.number_input("Page", min_value=1, value=1)
 
-    if st.button("Suggest related roles & skills", disabled=not (search_keyword and groq_key)):
+    if st.button("Suggest related roles & skills", disabled=not (search_keyword and agentrouter_api_key)):
         with st.spinner("Thinking..."):
             st.session_state.role_suggestions = suggest_role_skills(search_keyword)
 
@@ -916,7 +889,7 @@ else:
             except Exception as e:
                 st.error(f"Search failed: {e}")
                 st.session_state.job_results = []
-        if st.session_state.job_results and groq_key:
+        if st.session_state.job_results and agentrouter_api_key:
             with st.spinner("Checking which listings suit freshers..."):
                 st.session_state.fresher_ids = classify_freshers(st.session_state.job_results)
         else:
@@ -1095,7 +1068,7 @@ st.info(
     "CTA → Signoff"
 )
 
-if st.button("Generate drafts", disabled=not (resume_text and groq_key)):
+if st.button("Generate drafts", disabled=not (resume_text and agentrouter_api_key)):
     rows = recipients_df[recipients_df["email"].astype(str).str.strip() != ""]
     if rows.empty:
         st.warning("Add at least one contact with an email address above.")

@@ -10,7 +10,7 @@ then sends the email from your Gmail account with your resume attached.
 SETUP (see README.md for full details):
   1. pip install -r requirements.txt
   2. Copy .env.example to .env and fill in:
-       GMAIL_ADDRESS, GMAIL_APP_PASSWORD, ANTHROPIC_API_KEY
+       GMAIL_ADDRESS, GMAIL_APP_PASSWORD, AGENTROUTER_API_KEY
   3. Fill in recipients.csv with the people you want to email
   4. Put your resume at resume.pdf or resume.docx (or pass --resume path)
 
@@ -49,7 +49,7 @@ load_dotenv()
 
 GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+AGENTROUTER_API_KEY = os.getenv("AGENTROUTER_API_KEY")
 
 SENDER_NAME = os.getenv("SENDER_NAME", "")
 TARGET_ROLE = os.getenv("TARGET_ROLE", "")   # e.g. "Software Engineer"
@@ -213,9 +213,8 @@ def load_recipients() -> list[dict]:
 
 
 def check_config(need_send: bool):
-    if not GROQ_API_KEY:
-        sys.exit("Missing GROQ_API_KEY in .env. Get a free key at "
-                  "https://console.groq.com/keys")
+    if not AGENTROUTER_API_KEY:
+        sys.exit("Missing AGENTROUTER_API_KEY in .env. Get one from your AgentRouter dashboard.")
     if need_send and not (GMAIL_ADDRESS and GMAIL_APP_PASSWORD):
         sys.exit("Missing GMAIL_ADDRESS / GMAIL_APP_PASSWORD in .env")
 
