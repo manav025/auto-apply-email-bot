@@ -1,6 +1,6 @@
 # Job Search Automation Toolkit
 
-Two local tools that share one free AI backend ([Groq](https://console.groq.com)):
+Two local tools that share one AI backend (AgentRouter with Claude Opus 4.8):
 
 1. **`job_email_sender.py`** -- reads your resume, gets AI feedback on it,
    drafts a personalized outreach email per contact, sends it from your
@@ -12,7 +12,7 @@ Two local tools that share one free AI backend ([Groq](https://console.groq.com)
    with `--auto-submit`).
 
 Both run on your own computer using your own Gmail account and your own
-free Groq API key -- nothing here costs money at normal job-search volume.
+AgentRouter API key.
 
 ## 1. Install
 
@@ -30,10 +30,9 @@ cp .env.example .env
 ```
 
 Fill in `.env`:
-- **`GROQ_API_KEY`** -- free, no credit card. Get one at
-  https://console.groq.com/keys. Free tier covers this use case comfortably;
-  if you ever hit a rate limit, the script will tell you and you just wait
-  a bit or lower usage.
+- **`AGENTROUTER_API_KEY`** -- required for AI calls.
+- **`AGENTROUTER_BASE_URL`** -- defaults to `https://agentrouter.org/v1`.
+- **`AGENTROUTER_MODEL`** -- defaults to `claude-opus-4-8`.
 - **`GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD`** -- only needed for the email
   sender. Turn on 2-Step Verification at
   https://myaccount.google.com/security, then create an app password at
@@ -124,7 +123,7 @@ It covers everything the CLI does, plus:
 - **Dark mode aware** -- follows your OS/browser light or dark preference
   automatically, no setting to toggle.
 - **All credentials live in secrets, never on the page** -- there's no
-  field anywhere in the UI to type your Groq/Gmail/Adzuna keys. They're
+  field anywhere in the UI to type your AgentRouter/Gmail/Adzuna keys. They're
   read only from `.streamlit/secrets.toml` (local) or your app's Settings
   -> Secrets (Streamlit Cloud). The sidebar just shows a checklist of
   what's configured.
@@ -132,11 +131,11 @@ It covers everything the CLI does, plus:
 **Try it locally first:**
 ```bash
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-# edit .streamlit/secrets.toml with your real GROQ_API_KEY, GMAIL_ADDRESS, etc.
+# edit .streamlit/secrets.toml with your real AGENTROUTER_API_KEY, GMAIL_ADDRESS, etc.
 streamlit run streamlit_app.py
 ```
 Opens at http://localhost:8501. The sidebar shows which credentials are
-detected -- if `GROQ_API_KEY` is missing it'll tell you exactly what to add
+detected -- if `AGENTROUTER_API_KEY` is missing it'll tell you exactly what to add
 and where. Adzuna keys are optional, only needed for "Find open roles" --
 get a free pair at https://developer.adzuna.com/.
 
@@ -153,7 +152,7 @@ get a free pair at https://developer.adzuna.com/.
    is the *only* place your keys live for the deployed app -- there's no
    sidebar field to alternatively type them into. Also set `APP_PASSWORD`
    here, since the app gets a public URL and anyone who finds it could
-   otherwise use your Gmail/Groq/Adzuna credentials through it.
+   otherwise use your Gmail/AgentRouter/Adzuna credentials through it.
 
 Note: Community Cloud apps get 1 GB RAM and sleep when idle (a visit wakes
 them back up in a few seconds) -- plenty for this tool, since it's just API
@@ -236,7 +235,7 @@ credentials and should never end up in a public repo.
 | `job_email_sender.py` | Cold-email tool (CLI) |
 | `streamlit_app.py` | Cold-email tool (web UI, can run free on Streamlit Cloud) |
 | `apply_bot.py` | Career-page auto-fill tool |
-| `ai_client.py` | Shared Groq API wrapper (used by the CLI tools) |
+| `ai_client.py` | Shared AgentRouter API wrapper for Claude Opus 4.8 (used by the CLI tools) |
 | `.env` | Your secrets for CLI use (create from `.env.example`) |
 | `.streamlit/secrets.toml` | Your secrets for the web app (create from `.streamlit/secrets.toml.example`) |
 | `recipients.csv` | People to email (required `email`; optional personalization columns, create from `.example`) |
