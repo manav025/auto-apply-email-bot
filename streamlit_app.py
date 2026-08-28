@@ -356,13 +356,28 @@ def run_ats_analysis(resume_text: str, target_role: str, target_company: str, jd
     structure_score, sections_found, sections_missing = score_structure(resume_text)
     formatting_score, word_count, bullet_ratio = score_formatting(resume_text)
     ai = analyze_resume_ai(resume_text, target_role, target_company, jd_text)
+    if not isinstance(ai, dict):
+        ai = {}
 
-    content_score = max(0, min(30, int(ai.get("content_quality_score", 15) or 15)))
-    keywords_found = [k for k in (ai.get("technical_keywords_found") or []) if isinstance(k, str)]
+    try:
+        content_score_raw = int(ai.get("content_quality_score", 15) or 15)
+    except (TypeError, ValueError):
+        content_score_raw = 15
+    content_score = max(0, min(30, content_score_raw))
+
+    raw_keywords = ai.get("technical_keywords_found")
+    if isinstance(raw_keywords, list):
+        keywords_found = [k for k in raw_keywords if isinstance(k, str)]
+    else:
+        keywords_found = []
     keywords_score = min(10, round(len(keywords_found) / 15 * 10))
     overall = contact_score + structure_score + content_score + formatting_score + keywords_score
 
-    issues = [str(i) for i in (ai.get("issues") or [])]
+    raw_issues = ai.get("issues")
+    if isinstance(raw_issues, list):
+        issues = [str(i) for i in raw_issues]
+    else:
+        issues = []
     for name in sections_missing:
         issues.append(f"'{name.capitalize()}' section not clearly labeled")
     if "email" not in contact_found:
@@ -370,7 +385,11 @@ def run_ats_analysis(resume_text: str, target_role: str, target_company: str, jd
     if "phone" not in contact_found:
         issues.append("No phone number found")
 
-    suggestions = [str(s) for s in (ai.get("suggestions") or [])]
+    raw_suggestions = ai.get("suggestions")
+    if isinstance(raw_suggestions, list):
+        suggestions = [str(s) for s in raw_suggestions]
+    else:
+        suggestions = []
     if word_count < 400:
         suggestions.append(f"CV is {word_count} words -- aim for 400-700 words for a stronger ATS pass rate")
     elif word_count > 900:
